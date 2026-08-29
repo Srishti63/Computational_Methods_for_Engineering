@@ -19,7 +19,7 @@ def newton_raphson(f, x0, es=0.00001, max_iter=1000):
             return None
 
         x_new = x_old - f(x_old) / df
-
+ 
         if x_new != 0:
             ea = abs((x_new - x_old) / x_new) * 100
         else:
