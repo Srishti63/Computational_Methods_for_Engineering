@@ -1,0 +1,82 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ---------------- Gauss elimination (partial pivoting) ----------------
+def gauss_elim(A, b):
+    A = A.astype(float).copy()
+    b = b.astype(float).copy()
+    n = len(b)
+    for k in range(n - 1):
+        p = np.argmax(np.abs(A[k:, k])) + k
+        if p != k:
+            A[[k, p]] = A[[p, k]]
+            b[[k, p]] = b[[p, k]]
+        for i in range(k + 1, n):
+            f = A[i, k] / A[k, k]
+            A[i, k:] -= f * A[k, k:]
+            b[i] -= f * b[k]
+    x = np.zeros(n)
+    for i in range(n - 1, -1, -1):
+        x[i] = (b[i] - A[i, i + 1:] @ x[i + 1:]) / A[i, i]
+    return x
+
+# ---------------- Crank-Nicolson solver ----------------
+def crank_nicolson(K, C, rho, L, dx, dt, T0, g_left, g_right, t_save):
+    alpha = K / (rho * C)
+    lam = alpha * dt / dx**2
+    x = np.arange(0, L + dx / 2, dx)
+    n = len(x)
+
+    A = np.zeros((n, n))
+    B = np.zeros((n, n))
+    for i in range(1, n - 1):
+        A[i, i - 1] = -lam / 2; A[i, i] = 1 + lam; A[i, i + 1] = -lam / 2
+        B[i, i - 1] = lam / 2;  B[i, i] = 1 - lam; B[i, i + 1] = lam / 2
+
+    # Neumann BCs via ghost nodes
+    # x = 0: T(-1) = T(1) - 2*dx*g_left
+    A[0, 0] = 1 + lam; A[0, 1] = -lam
+    B[0, 0] = 1 - lam; B[0, 1] = lam
+    # x = L: T(n) = T(n-2) + 2*dx*g_right
+    A[-1, -1] = 1 + lam; A[-1, -2] = -lam
+    B[-1, -1] = 1 - lam; B[-1, -2] = lam
+
+    d = np.zeros(n)
+    d[0] = -2 * lam * dx * g_left
+    d[-1] = 2 * lam * dx * g_right
+
+    T = np.full(n, float(T0))
+    nsteps = int(round(max(t_save) / dt))
+    save_steps = {int(round(t / dt)): t for t in t_save}
+    out = {}
+    for step in range(1, nsteps + 1):
+        T = gauss_elim(A, B @ T + d)
+        if step in save_steps:
+            out[save_steps[step]] = T.copy()
+    return x, out, lam
+
+# ---------------- Problem data ----------------
+K, C, rho = 0.49, 0.2174, 2.7
+L, dx, dt = 10.0, 2.0, 0.1
+T0 = 50.0
+g_left, g_right = 1.0, 0.0
+t_save = [6, 12, 18, 24, 30]
+
+x, prof, lam = crank_nicolson(K, C, rho, L, dx, dt, T0, g_left, g_right, t_save)
+print(f"alpha = {K/(rho*C):.5f} cm^2/s, lambda = {lam:.5f}")
+np.set_printoptions(precision=4, suppress=True)
+print("x (cm):", x)
+for t in t_save:
+    print(f"t = {t:>2d} s :", prof[t])
+
+# ---------------- Plot ----------------
+plt.figure(figsize=(8, 5))
+for t in t_save:
+    plt.plot(x, prof[t], 'o-', label=f't = {t} s')
+plt.xlabel('x (cm)')
+plt.ylabel('T (°C)')
+plt.title('Crank–Nicolson: temperature profile in the rod ($\\Delta x$ = 2 cm, $\\Delta t$ = 0.1 s)')
+plt.grid(alpha=0.3)
+plt.legend()
+plt.tight_layout()
+plt.show()
